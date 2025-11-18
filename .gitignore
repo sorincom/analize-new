@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# uv
+uv.lock
+
+# Environment variables
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db

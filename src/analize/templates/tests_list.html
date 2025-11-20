@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Tests for {{ user.name }} - Analize{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Test Results for {{ user.name }}</h2>
+    <p style="color: #666; margin-bottom: 2rem;">
+        Sex: {{ user.sex }} | Age: {{ user.age }} | Born: {{ user.date_of_birth }}
+    </p>
+
+    {% if tests %}
+    <table>
+        <thead>
+            <tr>
+                <th>Test Name</th>
+                <th>Category</th>
+                <th>Latest Result</th>
+                <th>Latest Date</th>
+                <th>Total Results</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for test in tests %}
+            <tr>
+                <td><strong>{{ test.standard_name }}</strong></td>
+                <td>{{ test.category or '-' }}</td>
+                <td>
+                    {% if test.latest_value is not none %}
+                        {{ test.latest_value }} {{ test.latest_unit or '' }}
+                    {% elif test.latest_value_text %}
+                        <span style="font-weight: 500;">{{ test.latest_value_text }}</span>
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{{ test.latest_date }}</td>
+                <td>{{ test.result_count }}</td>
+                <td>
+                    <a href="/viz/users/{{ user.id }}/tests/{{ test.test_type_id }}/timeline"
+                       style="color: #3498db; text-decoration: none;">
+                        View Timeline →
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #666;">No test results found for this user.</p>
+    <p style="margin-top: 1rem;">
+        <a href="/upload/user/{{ user.id }}" class="btn">Upload Test Documents</a>
+    </p>
+    {% endif %}
+</div>
+
+<div style="margin-top: 1.5rem;">
+    <a href="/upload/user/{{ user.id }}" class="btn btn-secondary">Upload More Documents</a>
+    <a href="/users" class="btn btn-secondary" style="margin-left: 1rem;">Back to Users</a>
+</div>
+{% endblock %}

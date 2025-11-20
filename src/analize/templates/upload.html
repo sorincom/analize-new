@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Document - Analize{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Upload Medical Test Document</h2>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <p style="margin-bottom: 2rem; color: #666;">
+        Select a user to upload documents for:
+    </p>
+
+    {% if users %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Sex</th>
+                <th>Age</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.name }}</td>
+                <td>{{ user.sex }}</td>
+                <td>{{ user.age }}</td>
+                <td>
+                    <a href="/upload/user/{{ user.id }}" class="btn">Upload Documents</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="alert alert-error">
+        No users found. <a href="/users/new">Create a user</a> first.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@ dependencies = [
     "google-genai>=1.51",
     "python-dotenv>=1.0",
     "pydantic>=2.9",
+    "anthropic>=0.74.1",
 ]
 
 [project.optional-dependencies]

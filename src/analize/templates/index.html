@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Welcome to Analize</h2>
+    <p>Medical test analysis using AI vision for PDF lab reports.</p>
+
+    <h3 style="margin-top: 2rem;">Features</h3>
+    <ul style="margin-left: 2rem; margin-top: 1rem;">
+        <li>Upload medical test PDFs</li>
+        <li>Automatic extraction using Gemini AI</li>
+        <li>Lab and test normalization</li>
+        <li>Qualitative (positive/negative) and quantitative results</li>
+        <li>Historical data tracking</li>
+    </ul>
+
+    <h3 style="margin-top: 2rem;">Get Started</h3>
+    <div style="margin-top: 1rem;">
+        <a href="/users/new" class="btn">Create User</a>
+        <a href="/users" class="btn btn-secondary" style="margin-left: 1rem;">View Users</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Quick Stats</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+        <div style="padding: 1rem; background: #ecf0f1; border-radius: 4px;">
+            <div style="font-size: 2rem; font-weight: bold; color: #3498db;">{{ stats.users }}</div>
+            <div>Users</div>
+        </div>
+        <div style="padding: 1rem; background: #ecf0f1; border-radius: 4px;">
+            <div style="font-size: 2rem; font-weight: bold; color: #3498db;">{{ stats.labs }}</div>
+            <div>Labs</div>
+        </div>
+        <div style="padding: 1rem; background: #ecf0f1; border-radius: 4px;">
+            <div style="font-size: 2rem; font-weight: bold; color: #3498db;">{{ stats.test_types }}</div>
+            <div>Test Types</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

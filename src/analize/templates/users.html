@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Users - Analize{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Users</h2>
+    <a href="/users/new" class="btn" style="margin-bottom: 1rem;">Create New User</a>
+
+    {% if users %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Sex</th>
+                <th>Age</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.name }}</td>
+                <td>{{ user.sex }}</td>
+                <td>{{ user.age }}</td>
+                <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'N/A' }}</td>
+                <td>
+                    <a href="/viz/users/{{ user.id }}/tests">View Tests</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No users yet. Create one to get started.</p>
+    {% endif %}
+</div>
+{% endblock %}

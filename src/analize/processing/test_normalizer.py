@@ -1,9 +1,8 @@
 """Test normalization - map lab names to standard names."""
 
-from google import genai
-from google.genai import types
+from anthropic import Anthropic
 
-from analize.mcp import DatabaseMCP
+from analize.dal import Database
 from analize.models.schemas import ExtractedTest, TestType
 
 NORMALIZATION_PROMPT = """You are a medical test normalization system.
@@ -40,10 +39,13 @@ class TestNormalizer:
     preventing duplicates across different labs.
     """
 
-    def __init__(self, db: DatabaseMCP, api_key: str, model: str = "gemini-2.5-flash") -> None:
+    def __init__(
+        self, db: Database, api_key: str, model: str = "claude-haiku-4-5"
+    ) -> None:
         self.db = db
-        self.client = genai.Client(api_key=api_key)
+        self.client = Anthropic(api_key=api_key)
         self.model = model
+        self.tokens_used = {"input": 0, "output": 0}
 
     def get_or_create_test_type(self, extracted: ExtractedTest) -> TestType:
         """Get existing test type or create new one.
@@ -79,19 +81,21 @@ class TestNormalizer:
             existing_names=existing_names,
         )
 
-        response = self.client.models.generate_content(
+        response = self.client.messages.create(
             model=self.model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                response_mime_type="application/json",
-            ),
+            max_tokens=200,
+            temperature=0.0,
+            messages=[{"role": "user", "content": prompt}],
         )
+
+        # Track tokens
+        self.tokens_used["input"] += response.usage.input_tokens
+        self.tokens_used["output"] += response.usage.output_tokens
 
         import json
 
         try:
-            result = json.loads(response.text)
+            result = json.loads(response.content[0].text)
         except json.JSONDecodeError:
             # Fallback to suggested name
             result = {"match": False, "standard_name": extracted.suggested_standard_name}
@@ -117,6 +121,7 @@ class TestNormalizer:
         self,
         user_id: int,
         document_id: int,
+        lab_id: int,
         extracted_tests: list[ExtractedTest],
     ) -> list[int]:
         """Normalize extracted tests and store in database.
@@ -124,6 +129,7 @@ class TestNormalizer:
         Args:
             user_id: User ID
             document_id: Document ID
+            lab_id: Lab ID (already normalized)
             extracted_tests: List of extracted test data
 
         Returns:
@@ -135,19 +141,21 @@ class TestNormalizer:
             # Get or create normalized test type
             test_type = self.get_or_create_test_type(extracted)
 
-            # Store the result
-            result_id = self.db.create_test_result(
+            # Store the result (upsert - handles historical data from multiple docs)
+            result_id, created = self.db.upsert_test_result(
                 test_type_id=test_type.id,  # type: ignore[arg-type]
                 user_id=user_id,
                 document_id=document_id,
+                lab_id=lab_id,
                 lab_test_name=extracted.lab_test_name,
                 test_date=str(extracted.test_date),
                 value=extracted.value,
                 value_text=extracted.value_text,
+                value_normalized=extracted.value_normalized,
                 unit=extracted.unit,
                 lower_limit=extracted.lower_limit,
                 upper_limit=extracted.upper_limit,
-                lab_name=extracted.lab_name,
+                interpretation=extracted.interpretation,
                 documentation=extracted.documentation,
             )
             result_ids.append(result_id)

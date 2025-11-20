@@ -1,8 +1,8 @@
 """Visualization routes for viewing test results."""
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, render_template
 
-from analize.mcp import DatabaseMCP
+from analize.dal import Database
 
 viz_bp = Blueprint("viz", __name__)
 
@@ -10,7 +10,7 @@ viz_bp = Blueprint("viz", __name__)
 @viz_bp.route("/users", methods=["GET"])
 def list_users():
     """List all users."""
-    db = DatabaseMCP(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATABASE_PATH"])
     users = db.list_users()
     return jsonify([u.model_dump() for u in users])
 
@@ -21,7 +21,12 @@ def list_user_tests(user_id: int):
 
     Returns test types with their latest result.
     """
-    db = DatabaseMCP(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATABASE_PATH"])
+
+    # Get user info
+    user = db.get_user(user_id)
+    if not user:
+        return "User not found", 404
 
     # Get all results for user
     results = db.get_results_for_user(user_id)
@@ -43,7 +48,8 @@ def list_user_tests(user_id: int):
             }
         tests_by_type[type_id]["result_count"] += 1
 
-    return jsonify(list(tests_by_type.values()))
+    tests = list(tests_by_type.values())
+    return render_template("tests_list.html", user=user, tests=tests)
 
 
 @viz_bp.route("/users/<int:user_id>/tests/<int:test_type_id>/timeline", methods=["GET"])
@@ -53,13 +59,18 @@ def test_timeline(user_id: int, test_type_id: int):
     Returns all results for this test type ordered by date.
     Used for vertical timeline visualization.
     """
-    db = DatabaseMCP(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATABASE_PATH"])
+
+    # Get user info
+    user = db.get_user(user_id)
+    if not user:
+        return "User not found", 404
 
     # Get test type info
     test_types = db.list_test_types()
     test_type = next((t for t in test_types if t.id == test_type_id), None)
     if not test_type:
-        return jsonify({"error": "Test type not found"}), 404
+        return "Test type not found", 404
 
     # Get results
     results = db.get_results_for_test_type(user_id, test_type_id)
@@ -67,40 +78,60 @@ def test_timeline(user_id: int, test_type_id: int):
     # Format for timeline
     timeline = []
     for result in results:
-        # Determine if value is in range
-        in_range = None
-        if result.value is not None:
+        # Determine result status
+        is_qualitative = result.value_normalized is not None
+        status = None  # normal, abnormal, positive, negative, etc.
+
+        if is_qualitative:
+            # Qualitative result
+            normalized = result.value_normalized
+            if normalized in ("POSITIVE", "DETECTED", "REACTIVE", "PRESENT", "ABNORMAL", "HIGH"):
+                status = "abnormal"
+            elif normalized in ("NEGATIVE", "NOT_DETECTED", "NON_REACTIVE", "ABSENT", "NORMAL"):
+                status = "normal"
+            elif normalized == "BORDERLINE":
+                status = "borderline"
+            else:
+                status = "unknown"
+        elif result.value is not None:
+            # Quantitative result - check if in range
             if result.lower_limit is not None and result.upper_limit is not None:
-                in_range = result.lower_limit <= result.value <= result.upper_limit
+                if result.lower_limit <= result.value <= result.upper_limit:
+                    status = "normal"
+                else:
+                    status = "abnormal"
             elif result.lower_limit is not None:
-                in_range = result.value >= result.lower_limit
+                status = "normal" if result.value >= result.lower_limit else "abnormal"
             elif result.upper_limit is not None:
-                in_range = result.value <= result.upper_limit
+                status = "normal" if result.value <= result.upper_limit else "abnormal"
 
         timeline.append({
             "date": str(result.test_date),
             "value": result.value,
             "value_text": result.value_text,
+            "value_normalized": result.value_normalized,
             "unit": result.unit,
             "lower_limit": result.lower_limit,
             "upper_limit": result.upper_limit,
-            "in_range": in_range,
-            "lab_name": result.lab_name,
+            "status": status,  # normal, abnormal, borderline, unknown
+            "is_qualitative": is_qualitative,
+            "interpretation": result.interpretation,
             "lab_test_name": result.lab_test_name,
             "documentation": result.documentation,
         })
 
-    return jsonify({
-        "test_type_id": test_type_id,
-        "standard_name": test_type.standard_name,
-        "category": test_type.category,
-        "timeline": timeline,
-    })
+    return render_template(
+        "timeline.html",
+        user=user,
+        test_name=test_type.standard_name,
+        category=test_type.category,
+        timeline=timeline,
+    )
 
 
 @viz_bp.route("/test-types", methods=["GET"])
 def list_test_types():
     """List all test types in the system."""
-    db = DatabaseMCP(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATABASE_PATH"])
     test_types = db.list_test_types()
     return jsonify([t.model_dump() for t in test_types])

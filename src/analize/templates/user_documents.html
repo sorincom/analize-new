@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Documents for {{ user.name }} - Analize{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Documents for {{ user.name }}</h2>
+    <p style="color: #666; margin-bottom: 2rem;">
+        Sex: {{ user.sex }} | Age: {{ user.age }} | Born: {{ user.date_of_birth }}
+    </p>
+
+    <h3 style="margin-bottom: 1rem;">Upload New Document</h3>
+
+    {% if request.args.get('error') == 'invalid_file' %}
+    <div class="alert alert-error">Invalid file type. Only PDF files are allowed.</div>
+    {% endif %}
+
+    {% if request.args.get('duplicate') %}
+    <div class="alert alert-error">This file has already been uploaded.</div>
+    {% endif %}
+
+    <form method="POST" action="/upload/upload" enctype="multipart/form-data" style="margin-bottom: 3rem;">
+        <input type="hidden" name="user_id" value="{{ user.id }}">
+        <input type="hidden" name="redirect" value="1">
+
+        <div class="form-group">
+            <label for="file">PDF File</label>
+            <input type="file" id="file" name="file" accept=".pdf" required>
+        </div>
+
+        <button type="submit">Upload PDF</button>
+        <a href="/upload" class="btn btn-secondary" style="margin-left: 1rem;">Back to Users</a>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Uploaded Documents</h3>
+
+    {% if documents %}
+    <table>
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Uploaded</th>
+                <th>Status</th>
+                <th>Lab</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in documents %}
+            <tr>
+                <td>{{ doc.file_path.split('/')[-1] }}</td>
+                <td>{{ doc.uploaded_at }}</td>
+                <td>
+                    {% if doc.processed_at %}
+                    <span style="color: #27ae60; font-weight: 500;">Processed</span>
+                    {% else %}
+                    <span style="color: #e67e22; font-weight: 500;">Pending</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if doc.lab_id %}
+                    Lab #{{ doc.lab_id }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not doc.processed_at %}
+                    <form method="POST" action="/upload/process/{{ doc.id }}" style="display: inline;">
+                        <button type="submit" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Process</button>
+                    </form>
+                    {% else %}
+                    <a href="/viz/users/{{ user.id }}/tests" style="color: #3498db; text-decoration: none;">View Results</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #666;">No documents uploaded yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -11,7 +11,30 @@ class User(BaseModel):
     id: int | None = None
     name: str
     sex: str = Field(pattern="^(M|F|O)$")
-    age: int = Field(ge=0, le=150)
+    date_of_birth: date
+    created_at: datetime | None = None
+
+    @property
+    def age(self) -> int:
+        """Calculate age from date of birth."""
+        from datetime import date as date_type
+
+        today = date_type.today()
+        age = today.year - self.date_of_birth.year
+        if (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day):
+            age -= 1
+        return age
+
+
+class Lab(BaseModel):
+    """Laboratory information."""
+
+    id: int | None = None
+    name: str
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    accreditation: str | None = None
     created_at: datetime | None = None
 
 
@@ -20,10 +43,13 @@ class Document(BaseModel):
 
     id: int | None = None
     user_id: int
+    lab_id: int | None = None
     file_path: str
     content_hash: str
     uploaded_at: datetime | None = None
     processed_at: datetime | None = None
+    tokens: str | None = None  # JSON string: {"model_name": {"input": X, "output": Y}}
+    cost: float | None = None
 
 
 class TestType(BaseModel):
@@ -42,22 +68,35 @@ class TestResult(BaseModel):
     test_type_id: int
     user_id: int
     document_id: int
+    lab_id: int
     lab_test_name: str
     value: float | None = None
     value_text: str | None = None
+    value_normalized: str | None = None  # Normalized qualitative value
     unit: str | None = None
     lower_limit: float | None = None
     upper_limit: float | None = None
     test_date: date
-    lab_name: str | None = None
+    interpretation: str | None = None  # What this result means
     documentation: str | None = None
     created_at: datetime | None = None
+
+
+class ExtractedLab(BaseModel):
+    """Lab information extracted from document header/footer."""
+
+    name: str
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    accreditation: str | None = None
 
 
 class ExtractedTest(BaseModel):
     """Test data extracted by LLM from PDF.
 
     This is used as intermediate format before normalization and storage.
+    Lab info is extracted separately at document level.
     """
 
     lab_test_name: str
@@ -65,10 +104,11 @@ class ExtractedTest(BaseModel):
     suggested_standard_name: str
     value: float | None = None
     value_text: str | None = None
+    value_normalized: str | None = None  # POSITIVE, NEGATIVE, NORMAL, ABNORMAL, etc.
     unit: str | None = None
     lower_limit: float | None = None
     upper_limit: float | None = None
     test_date: date
-    lab_name: str | None = None
+    interpretation: str | None = None  # Clinical interpretation of the result
     documentation: str | None = None
     confidence: float = Field(ge=0.0, le=1.0, default=1.0)

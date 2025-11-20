@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}{{ test_name }} Timeline - Analize{% endblock %}
+
+{% block content %}
+<style>
+    .timeline {
+        position: relative;
+        padding: 2rem 0;
+    }
+    .timeline-item {
+        position: relative;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        background: white;
+        border-left: 4px solid #ddd;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .timeline-item.normal {
+        border-left-color: #27ae60;
+    }
+    .timeline-item.abnormal {
+        border-left-color: #e74c3c;
+    }
+    .timeline-item.borderline {
+        border-left-color: #f39c12;
+    }
+    .timeline-date {
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+    .timeline-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+    }
+    .timeline-value.normal {
+        color: #27ae60;
+    }
+    .timeline-value.abnormal {
+        color: #e74c3c;
+    }
+    .timeline-value.borderline {
+        color: #f39c12;
+    }
+    .timeline-range {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+        margin-top: 0.25rem;
+    }
+    .timeline-interpretation {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+        color: #555;
+    }
+    .timeline-meta {
+        margin-top: 0.5rem;
+        color: #7f8c8d;
+        font-size: 0.9rem;
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-left: 0.5rem;
+    }
+    .status-badge.normal {
+        background: #d4edda;
+        color: #155724;
+    }
+    .status-badge.abnormal {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    .status-badge.borderline {
+        background: #fff3cd;
+        color: #856404;
+    }
+</style>
+
+<div class="card">
+    <h2>{{ test_name }}</h2>
+    {% if category %}
+    <p style="color: #666; margin-bottom: 1rem;">Category: {{ category }}</p>
+    {% endif %}
+    <p style="color: #666;">
+        <strong>{{ user.name }}</strong> | Sex: {{ user.sex }} | Age: {{ user.age }}
+    </p>
+</div>
+
+{% if timeline %}
+<div class="timeline">
+    {% for result in timeline %}
+    <div class="timeline-item {{ result.status or '' }}">
+        <div class="timeline-date">
+            {{ result.date }}
+            {% if result.status %}
+            <span class="status-badge {{ result.status }}">
+                {{ result.status|upper }}
+            </span>
+            {% endif %}
+        </div>
+
+        <div class="timeline-value {{ result.status or '' }}">
+            {% if result.is_qualitative %}
+                {{ result.value_text }}
+                {% if result.value_normalized %}
+                <span style="font-size: 0.9rem; color: #7f8c8d;">
+                    ({{ result.value_normalized }})
+                </span>
+                {% endif %}
+            {% else %}
+                {{ result.value }}
+                {% if result.unit %}
+                <span style="font-size: 1rem; font-weight: 400;">{{ result.unit }}</span>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        {% if not result.is_qualitative and (result.lower_limit is not none or result.upper_limit is not none) %}
+        <div class="timeline-range">
+            Reference range:
+            {% if result.lower_limit is not none and result.upper_limit is not none %}
+                {{ result.lower_limit }} - {{ result.upper_limit }} {{ result.unit or '' }}
+            {% elif result.lower_limit is not none %}
+                ≥ {{ result.lower_limit }} {{ result.unit or '' }}
+            {% elif result.upper_limit is not none %}
+                ≤ {{ result.upper_limit }} {{ result.unit or '' }}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if result.interpretation %}
+        <div class="timeline-interpretation">
+            <strong>Clinical Interpretation:</strong><br>
+            {{ result.interpretation }}
+        </div>
+        {% endif %}
+
+        <div class="timeline-meta">
+            Lab test name: {{ result.lab_test_name }}
+            {% if result.documentation %}
+            <br>Note: {{ result.documentation }}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <p style="color: #666;">No results found for this test.</p>
+</div>
+{% endif %}
+
+<div style="margin-top: 1.5rem;">
+    <a href="/viz/users/{{ user.id }}/tests" class="btn btn-secondary">← Back to All Tests</a>
+    <a href="/upload/user/{{ user.id }}" class="btn btn-secondary" style="margin-left: 1rem;">Upload More Documents</a>
+</div>
+{% endblock %}

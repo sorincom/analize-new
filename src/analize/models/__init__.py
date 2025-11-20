@@ -2,7 +2,9 @@
 
 from analize.models.schemas import (
     Document,
+    ExtractedLab,
     ExtractedTest,
+    Lab,
     TestResult,
     TestType,
     User,
@@ -10,7 +12,9 @@ from analize.models.schemas import (
 
 __all__ = [
     "Document",
+    "ExtractedLab",
     "ExtractedTest",
+    "Lab",
     "TestResult",
     "TestType",
     "User",

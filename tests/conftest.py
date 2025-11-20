@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from analize.app import create_app
-from analize.mcp import DatabaseMCP
+from analize.dal import Database
 
 
 @pytest.fixture
@@ -33,11 +33,11 @@ def client(app):
 @pytest.fixture
 def db(app):
     """Create database instance."""
-    return DatabaseMCP(app.config["DATABASE_PATH"])
+    return Database(app.config["DATABASE_PATH"])
 
 
 @pytest.fixture
 def sample_user(db):
     """Create a sample user."""
-    user_id = db.create_user(name="Test User", sex="M", age=30)
+    user_id = db.create_user(name="Test User", sex="M", date_of_birth="1994-01-01")
     return db.get_user(user_id)

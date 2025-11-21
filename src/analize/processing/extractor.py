@@ -18,18 +18,22 @@ Extract:
 - accreditation: Any accreditation info (if shown)
 
 Return a JSON object. Example:
-{
+{{
   "name": "MedLife Laboratory",
   "address": "123 Medical Center Dr, City, Country",
   "phone": "+40-XXX-XXX-XXX",
   "email": "contact@medlife.ro",
   "accreditation": "ISO 15189"
-}
+}}
 
 Return ONLY the JSON object, no other text.
 """
 
 TEST_EXTRACTION_PROMPT = """Analyze this medical lab report PDF and extract all test results.
+
+PATIENT CONTEXT:
+- Sex: {patient_sex}
+- Age: {patient_age} years
 
 For each test, provide:
 - lab_test_name: The exact name as printed on the report
@@ -45,16 +49,24 @@ For each test, provide:
 - lower_limit: Lower reference range (null if not shown)
 - upper_limit: Upper reference range (null if not shown)
 - test_date: Date the test was performed (YYYY-MM-DD)
+- clinical_status: Clinical assessment of this result considering patient's age and sex:
+  * NORMAL: Result is clinically normal/optimal for this patient
+  * BORDERLINE: Result is suboptimal, insufficient, or warrants monitoring
+  * ABNORMAL: Result is outside healthy range, deficient, or concerning
+  * Consider age-specific and sex-specific ranges when available
+  * For multi-level ranges (e.g., deficient/insufficient/optimal), use the optimal range
+  * Examples: Vitamin D 20-29 is "insufficient" → BORDERLINE, not NORMAL
 - interpretation: Clinical interpretation of what this result means for this specific test
   * For qualitative: explain what positive/negative means
   * For quantitative: explain if value is normal/abnormal and clinical significance
   * Examples: "Positive indicates active COVID-19 infection", "Elevated glucose suggests diabetes risk"
 - documentation: Any notes or comments about this specific test
+- raw_text: The complete original text from the report for this test (including test name, value, ranges, notes, etc.)
 - confidence: Your confidence in the extraction (0.0 to 1.0)
 
 Return a JSON array of test objects. Example:
 [
-  {
+  {{
     "lab_test_name": "COVID-19 Ag",
     "lab_test_code": "CV19",
     "suggested_standard_name": "SARS-CoV-2 Antigen Test",
@@ -65,11 +77,13 @@ Return a JSON array of test objects. Example:
     "lower_limit": null,
     "upper_limit": null,
     "test_date": "2024-01-15",
+    "clinical_status": "ABNORMAL",
     "interpretation": "Positive result indicates active SARS-CoV-2 infection detected",
     "documentation": null,
+    "raw_text": "COVID-19 Ag (CV19): Pozitiv",
     "confidence": 0.98
-  },
-  {
+  }},
+  {{
     "lab_test_name": "Glucoza",
     "lab_test_code": "GLU",
     "suggested_standard_name": "Blood Glucose",
@@ -80,10 +94,12 @@ Return a JSON array of test objects. Example:
     "lower_limit": 70.0,
     "upper_limit": 100.0,
     "test_date": "2024-01-15",
+    "clinical_status": "ABNORMAL",
     "interpretation": "Elevated fasting glucose above normal range, suggests impaired glucose metabolism or diabetes",
     "documentation": null,
+    "raw_text": "Glucoza (GLU): 125.0 mg/dL | Interval: 70.0-100.0 mg/dL",
     "confidence": 0.95
-  }
+  }}
 ]
 
 Important:
@@ -153,11 +169,15 @@ class PDFExtractor:
         except (json.JSONDecodeError, TypeError) as e:
             raise ValueError(f"Failed to parse lab info from LLM response: {e}") from e
 
-    def extract_tests_from_pdf(self, pdf_path: Path) -> list[ExtractedTest]:
+    def extract_tests_from_pdf(
+        self, pdf_path: Path, patient_sex: str = "Unknown", patient_age: int | None = None
+    ) -> list[ExtractedTest]:
         """Extract test results from a PDF file.
 
         Args:
             pdf_path: Path to the PDF file
+            patient_sex: Patient sex (M/F/O) for context
+            patient_age: Patient age for age-specific ranges
 
         Returns:
             List of extracted test data
@@ -165,8 +185,13 @@ class PDFExtractor:
         with open(pdf_path, "rb") as f:
             pdf_bytes = f.read()
 
+        # Format prompt with patient context
+        prompt = TEST_EXTRACTION_PROMPT.format(
+            patient_sex=patient_sex, patient_age=patient_age or "Unknown"
+        )
+
         try:
-            result_text = self._extract_with_prompt(pdf_bytes, TEST_EXTRACTION_PROMPT)
+            result_text = self._extract_with_prompt(pdf_bytes, prompt)
             tests_data = json.loads(result_text)
             return [ExtractedTest(**test) for test in tests_data]
         except (json.JSONDecodeError, TypeError) as e:
@@ -175,16 +200,21 @@ class PDFExtractor:
             ) from e
 
     def extract_from_pdf(
-        self, pdf_path: Path
+        self,
+        pdf_path: Path,
+        patient_sex: str = "Unknown",
+        patient_age: int | None = None,
     ) -> tuple[ExtractedLab, list[ExtractedTest]]:
         """Extract both lab info and test results from PDF.
 
         Args:
             pdf_path: Path to the PDF file
+            patient_sex: Patient sex (M/F/O) for context
+            patient_age: Patient age for age-specific ranges
 
         Returns:
             Tuple of (lab_info, test_results)
         """
         lab_info = self.extract_lab_from_pdf(pdf_path)
-        test_results = self.extract_tests_from_pdf(pdf_path)
+        test_results = self.extract_tests_from_pdf(pdf_path, patient_sex, patient_age)
         return (lab_info, test_results)

@@ -3,6 +3,25 @@
 {% block title %}Tests for {{ user.name }} - Analize{% endblock %}
 
 {% block content %}
+<style>
+    .value-cell {
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+    .value-cell.normal {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    .value-cell.abnormal {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    .value-cell.borderline {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+</style>
 <div class="card">
     <h2>Test Results for {{ user.name }}</h2>
     <p style="color: #666; margin-bottom: 2rem;">
@@ -15,7 +34,8 @@
             <tr>
                 <th>Test Name</th>
                 <th>Category</th>
-                <th>Latest Result</th>
+                <th>Latest Value</th>
+                <th>Unit</th>
                 <th>Latest Date</th>
                 <th>Total Results</th>
                 <th>Action</th>
@@ -27,14 +47,17 @@
                 <td><strong>{{ test.standard_name }}</strong></td>
                 <td>{{ test.category or '-' }}</td>
                 <td>
-                    {% if test.latest_value is not none %}
-                        {{ test.latest_value }} {{ test.latest_unit or '' }}
-                    {% elif test.latest_value_text %}
-                        <span style="font-weight: 500;">{{ test.latest_value_text }}</span>
-                    {% else %}
-                        -
-                    {% endif %}
+                    <span class="value-cell {{ test.latest_status or '' }}">
+                        {% if test.latest_value is not none %}
+                            {{ test.latest_value }}
+                        {% elif test.latest_value_normalized %}
+                            {{ test.latest_value_normalized }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </span>
                 </td>
+                <td>{{ test.latest_unit or '-' }}</td>
                 <td>{{ test.latest_date }}</td>
                 <td>{{ test.result_count }}</td>
                 <td>

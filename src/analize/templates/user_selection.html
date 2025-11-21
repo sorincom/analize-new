@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Select User - Analize{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Welcome to Analize</h2>
+    <p style="color: #666; margin-bottom: 2rem;">Select your profile or create a new one</p>
+
+    {% if users %}
+    <h3 style="margin-bottom: 1rem;">Existing Users</h3>
+    <div style="display: grid; gap: 1rem; margin-bottom: 2rem;">
+        {% for user in users %}
+        <a href="/select-user/{{ user.id }}" style="
+            display: block;
+            padding: 1.5rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.2s;
+        " onmouseover="this.style.borderColor='#3498db'; this.style.backgroundColor='#f8f9fa'"
+           onmouseout="this.style.borderColor='#ddd'; this.style.backgroundColor='white'">
+            <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;">{{ user.name }}</div>
+            <div style="color: #666; font-size: 0.9rem;">
+                {{ user.sex }} | Age: {{ user.age }} | Born: {{ user.date_of_birth }}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <h3 style="margin-bottom: 1rem;">Create New User</h3>
+    <a href="/users/new" class="btn">+ Create New User</a>
+</div>
+{% endblock %}

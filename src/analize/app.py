@@ -15,6 +15,10 @@ def create_app(config_name: str | None = None) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config[config_name])
 
+    # Enable sessions
+    if not app.config.get("SECRET_KEY"):
+        app.config["SECRET_KEY"] = "dev-secret-key-change-in-production"
+
     # Ensure upload directory exists
     app.config["UPLOAD_DIR"].mkdir(parents=True, exist_ok=True)
 
@@ -29,16 +33,42 @@ def create_app(config_name: str | None = None) -> Flask:
 
     @app.route("/")
     def index():
-        """Home page."""
+        """Landing page - user selection."""
         from analize.dal import Database
 
-        db = Database(app.config["DATABASE_PATH"])
-        stats = {
-            "users": len(db.list_users()),
-            "labs": len(db.list_labs()),
-            "test_types": len(db.list_test_types()),
-        }
-        return render_template("index.html", stats=stats)
+        db = Database(app.config["DATA_DB_PATH"], app.config["CONFIG_DB_PATH"])
+        users = db.list_users()
+        return render_template("user_selection.html", users=users)
+
+    @app.route("/select-user/<int:user_id>")
+    def select_user(user_id: int):
+        """Select a user for this session."""
+        from flask import session, redirect, url_for
+        from analize.dal import Database
+
+        db = Database(app.config["DATA_DB_PATH"], app.config["CONFIG_DB_PATH"])
+        user = db.get_user(user_id)
+
+        if user:
+            session["user_id"] = user_id
+            return redirect(url_for("upload.upload_page"))
+
+        return redirect(url_for("index"))
+
+    @app.route("/tests")
+    def tests():
+        """Show tests for session user."""
+        from flask import session, redirect, url_for
+        if "user_id" not in session:
+            return redirect(url_for("index"))
+        return redirect(url_for("viz.list_user_tests", user_id=session["user_id"]))
+
+    @app.route("/change-user")
+    def change_user():
+        """Clear user session and return to selection."""
+        from flask import session, redirect, url_for
+        session.pop("user_id", None)
+        return redirect(url_for("index"))
 
     @app.route("/health")
     def health_check() -> dict[str, str]:

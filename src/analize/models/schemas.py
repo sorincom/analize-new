@@ -51,6 +51,17 @@ class Document(BaseModel):
     tokens: str | None = None  # JSON string: {"model_name": {"input": X, "output": Y}}
     cost: float | None = None
 
+    @property
+    def tokens_parsed(self) -> dict | None:
+        """Parse tokens JSON string into dict."""
+        if not self.tokens:
+            return None
+        try:
+            import json
+            return json.loads(self.tokens)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
 
 class TestType(BaseModel):
     """Normalized test type registry."""
@@ -77,8 +88,10 @@ class TestResult(BaseModel):
     lower_limit: float | None = None
     upper_limit: float | None = None
     test_date: date
+    clinical_status: str | None = None  # NORMAL, BORDERLINE, ABNORMAL
     interpretation: str | None = None  # What this result means
     documentation: str | None = None
+    raw_text: str | None = None  # Original text from report
     created_at: datetime | None = None
 
 
@@ -109,6 +122,8 @@ class ExtractedTest(BaseModel):
     lower_limit: float | None = None
     upper_limit: float | None = None
     test_date: date
+    clinical_status: str | None = None  # NORMAL, BORDERLINE, ABNORMAL - based on clinical assessment
     interpretation: str | None = None  # Clinical interpretation of the result
     documentation: str | None = None
+    raw_text: str | None = None  # Original text from report for this test
     confidence: float = Field(ge=0.0, le=1.0, default=1.0)

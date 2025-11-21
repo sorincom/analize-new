@@ -122,6 +122,12 @@ class LabNormalizer:
             # If not found, create new (shouldn't happen)
             result = {"match": False}
 
+        # Before creating new lab, check for exact name match
+        # (fallback in case LLM incorrectly said no match)
+        for lab in existing_labs:
+            if lab.name.lower() == extracted.name.lower():
+                return lab
+
         # Create new lab
         lab_id = self.db.create_lab(
             name=extracted.name,

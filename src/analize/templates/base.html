@@ -149,9 +149,14 @@
         <div class="container">
             <h1>Analize</h1>
             <nav>
+                {% if session.user_id %}
                 <a href="/">Home</a>
-                <a href="/users">Users</a>
                 <a href="/upload">Upload</a>
+                <a href="/tests">Tests</a>
+                <a href="/change-user">Change User</a>
+                {% else %}
+                <a href="/">Home</a>
+                {% endif %}
             </nav>
         </div>
     </header>

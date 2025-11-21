@@ -182,6 +182,109 @@ uv add <package>
 uv add --dev <package>
 ```
 
+## Current Development State
+
+### Implemented and Working
+
+**Core Functionality:**
+- ✅ User management (create, list, view)
+- ✅ PDF upload with hash-based deduplication
+- ✅ Document processing with LLM extraction
+- ✅ Lab normalization (deduplicates lab entries)
+- ✅ Test normalization (maps lab-specific names to standard terms)
+- ✅ Token tracking per document per model
+- ✅ Schema versioning (currently v2)
+- ✅ All 9 unit tests passing
+
+**Web UI:**
+- ✅ Session-based user management (login-less, selection-based)
+- ✅ Landing page with user selection/creation
+- ✅ 4-route navigation: Home, Upload, Tests, Change User
+- ✅ Card-based document display with token usage per model
+- ✅ Upload interface with auto-processing
+- ✅ Test results list (all tests for a user)
+- ✅ Timeline visualization (vertical timeline per test)
+- ✅ Color-coded status indicators (green/red/yellow)
+- ✅ Real-time status updates during processing
+
+**LLM Integration:**
+- ✅ Gemini 2.5 Flash for PDF vision extraction
+- ✅ Claude Haiku 4.5 for text normalization
+- ✅ Token usage tracking
+- ✅ Separate lab and test normalizers
+
+**Data Handling:**
+- ✅ Quantitative results (numeric with reference ranges)
+- ✅ Qualitative results (positive/negative with interpretation)
+- ✅ Historical data support (upsert logic prevents duplicates)
+- ✅ Natural key: (user_id, test_type_id, test_date, lab_id)
+
+### Setup Requirements
+
+**Required:**
+1. `GEMINI_API_KEY` - For PDF extraction (Gemini 2.5 Flash)
+2. `ANTHROPIC_API_KEY` - For normalization (Claude Haiku 4.5)
+
+**Optional:**
+- `GEMINI_MODEL` - Default: gemini-2.5-flash
+- `ANTHROPIC_MODEL` - Default: claude-haiku-4-5
+
+### Known Limitations
+
+1. **No authentication** - Users are for differentiation only, no login system
+2. **No cost calculation** - Token usage is tracked but cost not computed
+3. **No background processing** - Document processing is synchronous (blocks HTTP request)
+4. **No retry logic** - API failures will cause processing to fail
+5. **No rate limiting** - Could hit API limits with heavy usage
+6. **No PDF preview** - Can't view uploaded PDFs in UI
+7. **No result editing** - Can't manually correct extracted values
+8. **No data export** - Can't export results to CSV/PDF
+9. **No user profiles** - Can't edit user info after creation
+10. **No document deletion** - Once uploaded, documents persist
+
+### What Works Right Now
+
+**Complete workflow:**
+1. Create user with name, sex, date of birth
+2. Upload PDF for user
+3. Click "Process" to extract data
+4. View results in color-coded timeline
+5. See clinical interpretation for each result
+6. Track token usage per document
+
+**Database:**
+- Schema v2 with versioning
+- Automatic migration detection
+- Clean error messages for outdated schemas
+
+**Testing:**
+- 9 unit tests covering core functionality
+- All tests passing
+- Tests use temporary databases
+
+### Next Steps (Not Implemented)
+
+**High Priority:**
+- Background job queue for document processing
+- Retry logic with exponential backoff
+- Cost calculation from token usage
+- Document deletion feature
+- User profile editing
+
+**Medium Priority:**
+- PDF preview in browser
+- Manual result correction interface
+- Data export (CSV, PDF reports)
+- Batch document upload
+- Search/filter in results
+
+**Low Priority:**
+- User authentication
+- Multi-user access control
+- API rate limiting
+- Audit logging
+- Email notifications
+
 ## Questions / Clarifications / Suggestions
 
 ### Questions

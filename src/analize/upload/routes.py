@@ -3,7 +3,7 @@
 import hashlib
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
 
 from analize.dal import Database
@@ -13,22 +13,36 @@ upload_bp = Blueprint("upload", __name__)
 
 @upload_bp.route("/")
 def upload_page():
-    """Show upload page with user selection."""
-    db = Database(current_app.config["DATABASE_PATH"])
-    users = db.list_users()
-    return render_template("upload.html", users=users)
+    """Show documents for session user."""
+    if "user_id" not in session:
+        return redirect(url_for("index"))
+
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
+    user = db.get_user(session["user_id"])
+    if not user:
+        session.pop("user_id", None)
+        return redirect(url_for("index"))
+
+    documents = db.list_documents_for_user(user.id)
+    labs = {lab.id: lab.name for lab in db.list_labs()}
+
+    return render_template("user_documents.html", user=user, documents=documents, labs=labs)
 
 
 @upload_bp.route("/user/<int:user_id>")
 def user_documents(user_id: int):
     """Show documents for a specific user."""
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
     user = db.get_user(user_id)
     if not user:
         return "User not found", 404
 
     documents = db.list_documents_for_user(user_id)
-    return render_template("user_documents.html", user=user, documents=documents)
+
+    # Get lab names for display
+    labs = {lab.id: lab.name for lab in db.list_labs()}
+
+    return render_template("user_documents.html", user=user, documents=documents, labs=labs)
 
 
 def allowed_file(filename: str) -> bool:
@@ -73,7 +87,7 @@ def upload_file():
 
     if not user_id:
         if should_redirect:
-            db = Database(current_app.config["DATABASE_PATH"])
+            db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
             users = db.list_users()
             return render_template("upload.html", error="No user selected", users=users)
         return jsonify({"error": "No user_id provided"}), 400
@@ -88,28 +102,34 @@ def upload_file():
             return redirect(url_for("upload.user_documents", user_id=user_id, error="invalid_file"))
         return jsonify({"error": "Invalid file type. Only PDF allowed"}), 400
 
-    # Save file
+    # Compute hash from uploaded file stream
+    sha256 = hashlib.sha256()
+    file.seek(0)
+    for chunk in iter(lambda: file.read(8192), b""):
+        sha256.update(chunk)
+    content_hash = sha256.hexdigest()
+    file.seek(0)  # Reset for saving
+
+    # Save file with hash in filename to prevent conflicts
     filename = secure_filename(file.filename)
     upload_dir: Path = current_app.config["UPLOAD_DIR"]
-    file_path = upload_dir / f"{user_id}_{filename}"
+    hash_prefix = content_hash[:8]
+    file_path = upload_dir / f"{user_id}_{hash_prefix}_{filename}"
     file.save(file_path)
 
-    # Compute hash
-    content_hash = compute_file_hash(file_path)
-
     # Check for duplicate
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
     existing = db.get_document_by_hash(content_hash)
 
     if existing:
-        # File already processed - delete uploaded copy
-        file_path.unlink()
+        # File already exists - don't delete, just notify user
+        # (same hash = same filename, so we'd delete the only copy)
         if should_redirect:
             return redirect(url_for("upload.user_documents", user_id=user_id, duplicate="1"))
         return jsonify({
             "document_id": existing.id,
             "is_duplicate": True,
-            "message": "File already uploaded. Use reprocess endpoint to re-extract data.",
+            "message": "File already uploaded. Use reprocess button to re-extract data.",
         })
 
     # Create document record
@@ -119,13 +139,75 @@ def upload_file():
         content_hash=content_hash,
     )
 
+    # Auto-process the uploaded document
+    try:
+        from analize.processing import LabNormalizer, PDFExtractor, TestNormalizer
+
+        # Get user info for context
+        user = db.get_user(int(user_id))
+
+        # Extract lab info and tests from PDF with patient context
+        extractor = PDFExtractor(
+            api_key=current_app.config["GEMINI_API_KEY"],
+            model=current_app.config["GEMINI_MODEL"],
+        )
+        extracted_lab, extracted_tests = extractor.extract_from_pdf(
+            Path(file_path), patient_sex=user.sex, patient_age=user.age
+        )
+
+        # Normalize lab (get or create with LLM dedup)
+        lab_normalizer = LabNormalizer(
+            db=db,
+            api_key=current_app.config["ANTHROPIC_API_KEY"],
+            model=current_app.config["ANTHROPIC_MODEL"],
+        )
+        lab = lab_normalizer.get_or_create_lab(extracted_lab)
+
+        # Update document with lab_id
+        db.update_document_lab(document_id, lab.id)  # type: ignore[arg-type]
+
+        # Normalize and store tests
+        test_normalizer = TestNormalizer(
+            db=db,
+            api_key=current_app.config["ANTHROPIC_API_KEY"],
+            model=current_app.config["ANTHROPIC_MODEL"],
+        )
+        test_normalizer.normalize_and_store(
+            user_id=int(user_id),
+            document_id=document_id,
+            lab_id=lab.id,  # type: ignore[arg-type]
+            extracted_tests=extracted_tests,
+        )
+
+        # Collect and store token usage
+        import json
+
+        tokens = {
+            current_app.config["GEMINI_MODEL"]: {
+                "input": extractor.tokens_used["input"],
+                "output": extractor.tokens_used["output"],
+            },
+            current_app.config["ANTHROPIC_MODEL"]: {
+                "input": lab_normalizer.tokens_used["input"] + test_normalizer.tokens_used["input"],
+                "output": lab_normalizer.tokens_used["output"]
+                + test_normalizer.tokens_used["output"],
+            },
+        }
+        db.update_document_tokens(document_id, json.dumps(tokens))
+
+        # Mark document as processed
+        db.mark_document_processed(document_id)
+    except Exception as e:
+        # If processing fails, still show upload success but log error
+        current_app.logger.error(f"Auto-processing failed for document {document_id}: {e}")
+
     if should_redirect:
         return redirect(url_for("upload.user_documents", user_id=user_id))
 
     return jsonify({
         "document_id": document_id,
         "is_duplicate": False,
-        "message": "File uploaded successfully. Call process endpoint to extract data.",
+        "message": "File uploaded and processed successfully.",
     })
 
 
@@ -144,18 +226,25 @@ def process_document(document_id: int):
     """
     from analize.processing import LabNormalizer, PDFExtractor, TestNormalizer
 
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
     document = db.get_document(document_id)
 
     if not document:
         return jsonify({"error": "Document not found"}), 404
 
-    # Extract lab info and tests from PDF
+    # Get user info for context
+    user = db.get_user(document.user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Extract lab info and tests from PDF with patient context
     extractor = PDFExtractor(
         api_key=current_app.config["GEMINI_API_KEY"],
         model=current_app.config["GEMINI_MODEL"],
     )
-    extracted_lab, extracted_tests = extractor.extract_from_pdf(Path(document.file_path))
+    extracted_lab, extracted_tests = extractor.extract_from_pdf(
+        Path(document.file_path), patient_sex=user.sex, patient_age=user.age
+    )
 
     # Normalize lab (get or create with LLM dedup)
     lab_normalizer = LabNormalizer(

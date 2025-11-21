@@ -29,7 +29,6 @@
         </div>
 
         <button type="submit">Upload PDF</button>
-        <a href="/upload" class="btn btn-secondary" style="margin-left: 1rem;">Back to Users</a>
     </form>
 </div>
 
@@ -37,50 +36,112 @@
     <h3>Uploaded Documents</h3>
 
     {% if documents %}
-    <table>
-        <thead>
-            <tr>
-                <th>File</th>
-                <th>Uploaded</th>
-                <th>Status</th>
-                <th>Lab</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for doc in documents %}
-            <tr>
-                <td>{{ doc.file_path.split('/')[-1] }}</td>
-                <td>{{ doc.uploaded_at }}</td>
-                <td>
+    <div style="display: grid; gap: 1.5rem; margin-top: 1.5rem;">
+        {% for doc in documents %}
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 1.5rem; background: #fafafa;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;">
+                        {{ doc.file_path.split('/')[-1] }}
+                    </div>
+                    <div style="color: #666; font-size: 0.9rem; margin-bottom: 0.25rem;">
+                        Uploaded: {{ doc.uploaded_at }}
+                    </div>
+                    <div style="color: #666; font-size: 0.9rem;">
+                        Lab: {% if doc.lab_id and labs.get(doc.lab_id) %}{{ labs[doc.lab_id] }}{% elif doc.lab_id %}Lab #{{ doc.lab_id }}{% else %}-{% endif %}
+                    </div>
+                </div>
+                <div class="status-cell" data-doc-id="{{ doc.id }}" style="margin-left: 1rem;">
                     {% if doc.processed_at %}
-                    <span style="color: #27ae60; font-weight: 500;">Processed</span>
+                    <span style="color: #27ae60; font-weight: 500; background: #d4edda; padding: 0.5rem 1rem; border-radius: 4px; display: inline-block;">✓ Processed</span>
                     {% else %}
-                    <span style="color: #e67e22; font-weight: 500;">Pending</span>
+                    <span style="color: #e67e22; font-weight: 500; background: #fff3cd; padding: 0.5rem 1rem; border-radius: 4px; display: inline-block;">⏳ Pending</span>
                     {% endif %}
-                </td>
-                <td>
-                    {% if doc.lab_id %}
-                    Lab #{{ doc.lab_id }}
-                    {% else %}
-                    -
-                    {% endif %}
-                </td>
-                <td>
-                    {% if not doc.processed_at %}
-                    <form method="POST" action="/upload/process/{{ doc.id }}" style="display: inline;">
-                        <button type="submit" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Process</button>
-                    </form>
-                    {% else %}
-                    <a href="/viz/users/{{ user.id }}/tests" style="color: #3498db; text-decoration: none;">View Results</a>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </div>
+            </div>
+
+            {% if doc.tokens_parsed %}
+            <div style="background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 1rem; margin-bottom: 1rem;">
+                <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.75rem; color: #555;">Token Usage</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    {% for model, usage in doc.tokens_parsed.items() %}
+                    <div style="border-left: 3px solid #3498db; padding-left: 0.75rem;">
+                        <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.25rem;">{{ model }}</div>
+                        <div style="font-size: 0.85rem; color: #333;">
+                            <span style="color: #3498db; font-weight: 500;">{{ "{:,}".format(usage.input) }}</span> in /
+                            <span style="color: #27ae60; font-weight: 500;">{{ "{:,}".format(usage.output) }}</span> out
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div style="display: flex; gap: 0.75rem;">
+                {% if not doc.processed_at %}
+                <form method="POST" action="/upload/process/{{ doc.id }}" style="display: inline;" class="process-form" data-doc-id="{{ doc.id }}">
+                    <button type="submit" class="process-btn">Process</button>
+                </form>
+                {% else %}
+                <a href="/tests" class="btn" style="text-decoration: none; padding: 0.5rem 1rem;">View Results</a>
+                <form method="POST" action="/upload/process/{{ doc.id }}" style="display: inline;" class="process-form" data-doc-id="{{ doc.id }}">
+                    <input type="hidden" name="redirect" value="1">
+                    <button type="submit" class="process-btn btn-secondary">Reprocess</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
     {% else %}
     <p style="color: #666;">No documents uploaded yet.</p>
     {% endif %}
 </div>
+
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+</style>
+
+<script>
+// Handle process/reprocess button clicks
+document.querySelectorAll('.process-form').forEach(form => {
+    form.addEventListener('submit', function(e) {
+        const docId = this.dataset.docId;
+        const btn = this.querySelector('.process-btn');
+        const statusCell = document.querySelector(`.status-cell[data-doc-id="${docId}"]`);
+
+        // Update status badge with spinner
+        statusCell.innerHTML = '<span style="color: #f39c12; font-weight: 500; background: #fff3cd; padding: 0.5rem 1rem; border-radius: 4px; display: inline-block;"><span class="spinner">⟳</span> Processing...</span>';
+
+        // Disable button
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+
+        // Disable all process buttons on the page
+        document.querySelectorAll('.process-btn').forEach(b => {
+            b.disabled = true;
+            b.style.opacity = '0.5';
+        });
+    });
+});
+
+// Handle file upload form
+const uploadForm = document.querySelector('form[action="/upload/upload"]');
+if (uploadForm) {
+    uploadForm.addEventListener('submit', function(e) {
+        const submitBtn = this.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Uploading and processing...';
+        submitBtn.style.opacity = '0.5';
+    });
+}
+</script>
 {% endblock %}

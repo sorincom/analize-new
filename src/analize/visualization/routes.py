@@ -10,7 +10,7 @@ viz_bp = Blueprint("viz", __name__)
 @viz_bp.route("/users", methods=["GET"])
 def list_users():
     """List all users."""
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
     users = db.list_users()
     return jsonify([u.model_dump() for u in users])
 
@@ -21,7 +21,7 @@ def list_user_tests(user_id: int):
 
     Returns test types with their latest result.
     """
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
 
     # Get user info
     user = db.get_user(user_id)
@@ -36,14 +36,41 @@ def list_user_tests(user_id: int):
     for result in results:
         type_id = result["test_type_id"]
         if type_id not in tests_by_type:
+            # Use stored clinical_status, fallback to computed status if missing
+            status = result.get("clinical_status")
+            if status:
+                status = status.lower()  # Convert NORMAL/ABNORMAL/BORDERLINE to lowercase
+            else:
+                # Fallback: compute status for old results without clinical_status
+                is_qualitative = result["value"] is None and result["value_normalized"] is not None
+                if is_qualitative:
+                    normalized = result["value_normalized"]
+                    if normalized in ("POSITIVE", "DETECTED", "REACTIVE", "PRESENT", "ABNORMAL", "HIGH"):
+                        status = "abnormal"
+                    elif normalized in ("NEGATIVE", "NOT_DETECTED", "NON_REACTIVE", "ABSENT", "NORMAL"):
+                        status = "normal"
+                    elif normalized == "BORDERLINE":
+                        status = "borderline"
+                elif result["value"] is not None:
+                    if result["lower_limit"] is not None and result["upper_limit"] is not None:
+                        if result["lower_limit"] <= result["value"] <= result["upper_limit"]:
+                            status = "normal"
+                        else:
+                            status = "abnormal"
+                    elif result["lower_limit"] is not None:
+                        status = "normal" if result["value"] >= result["lower_limit"] else "abnormal"
+                    elif result["upper_limit"] is not None:
+                        status = "normal" if result["value"] <= result["upper_limit"] else "abnormal"
+
             tests_by_type[type_id] = {
                 "test_type_id": type_id,
                 "standard_name": result["standard_name"],
                 "category": result["category"],
                 "latest_date": result["test_date"],
                 "latest_value": result["value"],
-                "latest_value_text": result["value_text"],
+                "latest_value_normalized": result["value_normalized"],
                 "latest_unit": result["unit"],
+                "latest_status": status,
                 "result_count": 0,
             }
         tests_by_type[type_id]["result_count"] += 1
@@ -59,7 +86,7 @@ def test_timeline(user_id: int, test_type_id: int):
     Returns all results for this test type ordered by date.
     Used for vertical timeline visualization.
     """
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
 
     # Get user info
     user = db.get_user(user_id)
@@ -78,33 +105,35 @@ def test_timeline(user_id: int, test_type_id: int):
     # Format for timeline
     timeline = []
     for result in results:
-        # Determine result status
-        is_qualitative = result.value_normalized is not None
-        status = None  # normal, abnormal, positive, negative, etc.
-
-        if is_qualitative:
-            # Qualitative result
-            normalized = result.value_normalized
-            if normalized in ("POSITIVE", "DETECTED", "REACTIVE", "PRESENT", "ABNORMAL", "HIGH"):
-                status = "abnormal"
-            elif normalized in ("NEGATIVE", "NOT_DETECTED", "NON_REACTIVE", "ABSENT", "NORMAL"):
-                status = "normal"
-            elif normalized == "BORDERLINE":
-                status = "borderline"
-            else:
-                status = "unknown"
-        elif result.value is not None:
-            # Quantitative result - check if in range
-            if result.lower_limit is not None and result.upper_limit is not None:
-                if result.lower_limit <= result.value <= result.upper_limit:
-                    status = "normal"
-                else:
+        # Use stored clinical_status, fallback to computed status if missing
+        status = result.clinical_status
+        if status:
+            status = status.lower()  # Convert NORMAL/ABNORMAL/BORDERLINE to lowercase
+        else:
+            # Fallback: compute status for old results without clinical_status
+            is_qualitative = result.value is None and result.value_text is not None
+            if is_qualitative:
+                normalized = result.value_normalized
+                if normalized in ("POSITIVE", "DETECTED", "REACTIVE", "PRESENT", "ABNORMAL", "HIGH"):
                     status = "abnormal"
-            elif result.lower_limit is not None:
-                status = "normal" if result.value >= result.lower_limit else "abnormal"
-            elif result.upper_limit is not None:
-                status = "normal" if result.value <= result.upper_limit else "abnormal"
+                elif normalized in ("NEGATIVE", "NOT_DETECTED", "NON_REACTIVE", "ABSENT", "NORMAL"):
+                    status = "normal"
+                elif normalized == "BORDERLINE":
+                    status = "borderline"
+                else:
+                    status = "unknown"
+            elif result.value is not None:
+                if result.lower_limit is not None and result.upper_limit is not None:
+                    if result.lower_limit <= result.value <= result.upper_limit:
+                        status = "normal"
+                    else:
+                        status = "abnormal"
+                elif result.lower_limit is not None:
+                    status = "normal" if result.value >= result.lower_limit else "abnormal"
+                elif result.upper_limit is not None:
+                    status = "normal" if result.value <= result.upper_limit else "abnormal"
 
+        is_qualitative = result.value is None and result.value_text is not None
         timeline.append({
             "date": str(result.test_date),
             "value": result.value,
@@ -132,6 +161,6 @@ def test_timeline(user_id: int, test_type_id: int):
 @viz_bp.route("/test-types", methods=["GET"])
 def list_test_types():
     """List all test types in the system."""
-    db = Database(current_app.config["DATABASE_PATH"])
+    db = Database(current_app.config["DATA_DB_PATH"], current_app.config["CONFIG_DB_PATH"])
     test_types = db.list_test_types()
     return jsonify([t.model_dump() for t in test_types])

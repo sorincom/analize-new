@@ -107,14 +107,21 @@ class TestNormalizer:
                 if t.standard_name == standard_name:
                     return t
 
+        # Before creating new test type, check for exact name match
+        # (fallback in case LLM incorrectly said no match)
+        standard_name = result["standard_name"]
+        for t in existing_types:
+            if t.standard_name.lower() == standard_name.lower():
+                return t
+
         # Create new test type
         test_id = self.db.create_test_type(
-            standard_name=result["standard_name"],
+            standard_name=standard_name,
             category=None,
         )
         return TestType(
             id=test_id,
-            standard_name=result["standard_name"],
+            standard_name=standard_name,
         )
 
     def normalize_and_store(
@@ -155,8 +162,10 @@ class TestNormalizer:
                 unit=extracted.unit,
                 lower_limit=extracted.lower_limit,
                 upper_limit=extracted.upper_limit,
+                clinical_status=extracted.clinical_status,
                 interpretation=extracted.interpretation,
                 documentation=extracted.documentation,
+                raw_text=extracted.raw_text,
             )
             result_ids.append(result_id)
 

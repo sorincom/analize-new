@@ -17,7 +17,8 @@ def app():
 
         app = create_app("development")
         app.config["TESTING"] = True
-        app.config["DATABASE_PATH"] = tmpdir_path / "test.db"
+        app.config["DATA_DB_PATH"] = tmpdir_path / "test_data.db"
+        app.config["CONFIG_DB_PATH"] = tmpdir_path / "test_config.db"
         app.config["UPLOAD_DIR"] = tmpdir_path / "uploads"
         app.config["UPLOAD_DIR"].mkdir()
 
@@ -33,7 +34,7 @@ def client(app):
 @pytest.fixture
 def db(app):
     """Create database instance."""
-    return Database(app.config["DATABASE_PATH"])
+    return Database(app.config["DATA_DB_PATH"], app.config["CONFIG_DB_PATH"])
 
 
 @pytest.fixture

@@ -14,24 +14,60 @@ class Database:
 
     The Flask app must NOT access the database directly.
     All CRUD operations go through this class.
+
+    Uses sharded databases:
+    - config.db: Configuration data (users, settings - survives schema changes)
+    - data.db: Test data (labs, documents, tests - can be deleted/recreated)
     """
 
-    def __init__(self, db_path: Path) -> None:
-        self.db_path = db_path
+    def __init__(self, data_db_path: Path, config_db_path: Path | None = None) -> None:
+        """Initialize database with sharding support.
+
+        Args:
+            data_db_path: Path to main data database
+            config_db_path: Path to config database (optional, defaults to config.db in same dir)
+        """
+        self.data_db_path = data_db_path
+        if config_db_path is None:
+            self.config_db_path = data_db_path.parent / "config.db"
+        else:
+            self.config_db_path = config_db_path
         self._init_db()
 
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """Get a database connection with row factory."""
-        conn = sqlite3.connect(self.db_path)
+        """Get a database connection with row factory.
+
+        Attaches config.db so all tables are accessible.
+        """
+        conn = sqlite3.connect(self.data_db_path)
         conn.row_factory = sqlite3.Row
+        # Attach config database
+        conn.execute(f"ATTACH DATABASE '{self.config_db_path}' AS config_db")
         try:
             yield conn
         finally:
             conn.close()
 
     def _init_db(self) -> None:
-        """Initialize database schema."""
+        """Initialize database schemas for both databases."""
+        # Initialize config database first (separate connection, no attach)
+        conn_config = sqlite3.connect(self.config_db_path)
+        try:
+            conn_config.executescript("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    sex TEXT NOT NULL,
+                    date_of_birth DATE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn_config.commit()
+        finally:
+            conn_config.close()
+
+        # Initialize data database with attached config db
         with self._get_connection() as conn:
             # Check schema version
             cursor = conn.execute(
@@ -39,35 +75,10 @@ class Database:
             )
             schema_table_exists = cursor.fetchone() is not None
 
-            if not schema_table_exists:
-                # New database - check if old schema exists
-                cursor = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
-                )
-                users_table_exists = cursor.fetchone() is not None
-
-                if users_table_exists:
-                    # Old schema exists - check if it has the old 'age' column
-                    cursor = conn.execute("PRAGMA table_info(users)")
-                    columns = {row[1] for row in cursor.fetchall()}
-                    if "age" in columns:
-                        raise RuntimeError(
-                            "Database schema is outdated (stores 'age' instead of 'date_of_birth'). "
-                            "Delete the database file and restart to create a new schema."
-                        )
-
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS schema_version (
                     version INTEGER PRIMARY KEY,
                     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    sex TEXT NOT NULL,
-                    date_of_birth DATE NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
                 CREATE TABLE IF NOT EXISTS labs (
@@ -90,7 +101,6 @@ class Database:
                     processed_at TIMESTAMP,
                     tokens TEXT,
                     cost REAL,
-                    FOREIGN KEY (user_id) REFERENCES users(id),
                     FOREIGN KEY (lab_id) REFERENCES labs(id)
                 );
 
@@ -115,12 +125,13 @@ class Database:
                     lower_limit REAL,
                     upper_limit REAL,
                     test_date DATE NOT NULL,
+                    clinical_status TEXT,
                     interpretation TEXT,
                     documentation TEXT,
+                    raw_text TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (test_type_id) REFERENCES test_types(id),
-                    FOREIGN KEY (user_id) REFERENCES users(id),
                     FOREIGN KEY (document_id) REFERENCES documents(id),
                     FOREIGN KEY (lab_id) REFERENCES labs(id),
                     UNIQUE (user_id, test_type_id, test_date, lab_id)
@@ -136,18 +147,18 @@ class Database:
 
             # Set schema version for new databases
             if not schema_table_exists:
-                conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (2)")
+                conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (3)")
             else:
                 # Check current version
                 cursor = conn.execute("SELECT MAX(version) FROM schema_version")
                 current_version = cursor.fetchone()[0]
-                if current_version < 2:
-                    # Check if documents table has tokens column
-                    cursor = conn.execute("PRAGMA table_info(documents)")
+                if current_version < 3:
+                    # Check if test_results table has clinical_status column
+                    cursor = conn.execute("PRAGMA table_info(test_results)")
                     columns = {row[1] for row in cursor.fetchall()}
-                    if "tokens" not in columns:
+                    if "clinical_status" not in columns:
                         raise RuntimeError(
-                            "Database schema is outdated (missing tokens/cost columns). "
+                            "Database schema is outdated (missing clinical_status/raw_text columns). "
                             "Delete the database file and restart to create a new schema."
                         )
 
@@ -167,7 +178,7 @@ class Database:
         """
         with self._get_connection() as conn:
             cursor = conn.execute(
-                "INSERT INTO users (name, sex, date_of_birth) VALUES (?, ?, ?)",
+                "INSERT INTO config_db.users (name, sex, date_of_birth) VALUES (?, ?, ?)",
                 (name, sex, date_of_birth),
             )
             conn.commit()
@@ -177,7 +188,7 @@ class Database:
         """Get a user by ID."""
         with self._get_connection() as conn:
             row = conn.execute(
-                "SELECT * FROM users WHERE id = ?", (user_id,)
+                "SELECT * FROM config_db.users WHERE id = ?", (user_id,)
             ).fetchone()
             if row:
                 return User(**dict(row))
@@ -186,7 +197,7 @@ class Database:
     def list_users(self) -> list[User]:
         """List all users."""
         with self._get_connection() as conn:
-            rows = conn.execute("SELECT * FROM users ORDER BY name").fetchall()
+            rows = conn.execute("SELECT * FROM config_db.users ORDER BY name").fetchall()
             return [User(**dict(row)) for row in rows]
 
     # Lab operations
@@ -380,8 +391,10 @@ class Database:
         unit: str | None = None,
         lower_limit: float | None = None,
         upper_limit: float | None = None,
+        clinical_status: str | None = None,
         interpretation: str | None = None,
         documentation: str | None = None,
+        raw_text: str | None = None,
     ) -> tuple[int, bool]:
         """Upsert a test result based on natural key.
 
@@ -428,8 +441,10 @@ class Database:
                     unit = ?,
                     lower_limit = ?,
                     upper_limit = ?,
+                    clinical_status = ?,
                     interpretation = ?,
                     documentation = ?,
+                    raw_text = ?,
                     updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?""",
                     (
@@ -441,8 +456,10 @@ class Database:
                         unit,
                         lower_limit,
                         upper_limit,
+                        clinical_status,
                         interpretation,
                         documentation,
+                        raw_text,
                         result_id,
                     ),
                 )
@@ -453,8 +470,8 @@ class Database:
                 cursor = conn.execute(
                     """INSERT INTO test_results
                     (test_type_id, user_id, document_id, lab_id, lab_test_name, value, value_text,
-                     value_normalized, unit, lower_limit, upper_limit, test_date, interpretation, documentation)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     value_normalized, unit, lower_limit, upper_limit, test_date, clinical_status, interpretation, documentation, raw_text)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         test_type_id,
                         user_id,
@@ -468,8 +485,10 @@ class Database:
                         lower_limit,
                         upper_limit,
                         test_date,
+                        clinical_status,
                         interpretation,
                         documentation,
+                        raw_text,
                     ),
                 )
                 conn.commit()

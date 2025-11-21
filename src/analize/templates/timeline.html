@@ -108,18 +108,17 @@
         </div>
 
         <div class="timeline-value {{ result.status or '' }}">
-            {% if result.is_qualitative %}
-                {{ result.value_text }}
-                {% if result.value_normalized %}
-                <span style="font-size: 0.9rem; color: #7f8c8d;">
-                    ({{ result.value_normalized }})
-                </span>
-                {% endif %}
-            {% else %}
+            {% if result.value is not none %}
+                {# Quantitative result #}
                 {{ result.value }}
                 {% if result.unit %}
                 <span style="font-size: 1rem; font-weight: 400;">{{ result.unit }}</span>
                 {% endif %}
+            {% elif result.value_normalized %}
+                {# Qualitative result #}
+                {{ result.value_normalized }}
+            {% else %}
+                <span style="color: #999;">No value recorded</span>
             {% endif %}
         </div>
 

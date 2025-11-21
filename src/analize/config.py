@@ -16,7 +16,8 @@ class Config:
     # Paths
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     UPLOAD_DIR = BASE_DIR / "uploads"
-    DATABASE_PATH = BASE_DIR / "analize.db"
+    DATA_DB_PATH = BASE_DIR / "data.db"
+    CONFIG_DB_PATH = BASE_DIR / "config.db"
 
     # Gemini (for PDF vision extraction)
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
